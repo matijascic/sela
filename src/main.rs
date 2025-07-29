@@ -1,3 +1,4 @@
+use std::io::{self, Write};
 mod audio;
 
 
@@ -7,24 +8,60 @@ fn main() {
     let stream: cpal::Stream;
     {
         let host = cpal::default_host();
-        let devices = host.output_devices().expect("Failed to get output devices");
-        for device in devices {
-            println!("Device: {}", device.name().unwrap_or("Unknown".to_string()));
-            if let Ok(supported_configs) = device.supported_output_configs() {
-                for config in supported_configs {
-                    println!("  {:?}", config);
-                }
-            } else {
-                println!("  Could not query configs");
-            }
+        let devices: Vec<_> = host.output_devices().expect("Failed to get output devices").collect();
+        for (i, device) in devices.iter().enumerate() {
+            println!("{}: {}", i + 1, device.name().unwrap_or("Unknown".to_string()));
         }
 
-        let device = host.default_output_device().expect("No output device available");
-        let config: SupportedStreamConfig = device.default_output_config()
-            .expect("Failed to get default output format").into();
+        print!("Select device (1-{}): ", devices.len());
+        io::stdout().flush().unwrap();
 
-        println!("Using device: {}", device.name().unwrap());
-        println!("Output format: {:?}", config);
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+
+        let choice: usize = input.trim().parse().unwrap_or(0);
+
+        if choice == 0 || choice > devices.len() {
+            eprintln!("Invalid choice");
+            return;
+        }
+
+        let selected_device = &devices[choice - 1];
+        println!("You selected: {}", selected_device.name().unwrap_or("Unknown".to_string()));
+        
+        // Query supported configs
+        let configs: Vec<_> = match selected_device.supported_output_configs() {
+            Ok(cfgs) => cfgs.collect(),
+            Err(_) => {
+                eprintln!("Could not query configs");
+                return;
+            }
+        };
+
+        for (i, config) in configs.iter().enumerate() {
+            println!("{}: {:?}", i + 1, config);
+        }
+
+        print!("Select config (1-{}): ", configs.len());
+        io::stdout().flush().unwrap();
+
+        input.clear();
+        io::stdin().read_line(&mut input).unwrap();
+        let config_choice: usize = input.trim().parse().unwrap_or(0);
+
+        if config_choice == 0 || config_choice > configs.len() {
+            eprintln!("Invalid config choice");
+            return;
+        }
+
+        let config_range = &configs[config_choice - 1];
+        let chosen_config = config_range.with_sample_rate(config_range.min_sample_rate());
+
+        println!(
+            "Using device '{}' with config {:?}",
+            selected_device.name().unwrap_or("Unknown".to_string()),
+            chosen_config
+        );
 
         let seconds = 4;
         let sine_buffer: Vec<f32> = (0..44100*seconds).map(|x| {
@@ -32,8 +69,8 @@ fn main() {
             (x as f32 * freq * 2.0 * std::f32::consts::PI / 44100.0).sin()
         }).collect();
         let mut index = 0;
-        let stream_config: StreamConfig = config.into();
-        stream = device.build_output_stream(
+        let stream_config: StreamConfig = chosen_config.into();
+        stream = selected_device.build_output_stream(
             &stream_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
                 for sample in data.iter_mut() {
