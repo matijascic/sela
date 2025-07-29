@@ -1,33 +1,18 @@
-use anyhow::Result;
 mod audio;
-
 use audio::engine::AudioEngine;
+use audio::io::load_file_as_f32;
 
-use cpal::{self, traits::{DeviceTrait, HostTrait, StreamTrait}, StreamConfig, SupportedStreamConfig};
+use anyhow::Result;
+use cpal::{self, traits::{DeviceTrait, StreamTrait}, StreamConfig};
 
 fn main() -> Result<()> {
     let host = cpal::default_host();
     let device = AudioEngine::select_device(&host)?;
     let config = AudioEngine::select_config(&device)?;
+    println!("Using device '{}' with config {:?}", device.name()?, config);
 
-    println!(
-        "Using device '{}' with config {:?}",
-        device.name()?,
-        config
-    );
-
-    let mut reader = hound::WavReader::open("resources/corvette.wav")?;
-    let spec = reader.spec();
-    println!("Sample format: {:?}", spec.sample_format);
-    println!("Bits per sample: {:?}", spec.bits_per_sample);
-    println!("Sample rate: {}", spec.sample_rate);
-    println!("Channels: {}", spec.channels);
-    let samples: Vec<f32> = reader
-        .samples::<i16>() 
-        .filter_map(Result::ok)
-        .map(|s| s as f32 / i16::MAX as f32) 
-        .collect();
-
+    let file = "resources/corvette.wav";
+    let samples = load_file_as_f32(file)?;
     println!("Loaded {} samples", samples.len());
 
     let mut index = 0;
